@@ -1,0 +1,16 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Assembly (Linux/macOS)",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "command": "nasm -f elf64 \"${file}\" -o \"${fileDirname}/${fileBasenameNoExtension}.o\" && gcc \"${fileDirname}/${fileBasenameNoExtension}.o\" -o \"${fileDirname}/${fileBasenameNoExtension}\"",
+            "problemMatcher": [],
+            "detail": "Assembles and links the current .asm file using NASM and GCC."
+        }
+    ]
+}
