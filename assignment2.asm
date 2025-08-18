@@ -35,18 +35,18 @@ DEC BL
 JNZ NextP
 
 rw 1,1,S1,S2
- mov DL, 5
- mov rdi, Arr
- mov rsi, result
- NextEL: mov CL, 02
+mov DL, 5
+mov rdi, Arr
+mov rsi, result
+NextEL: mov CL, 02
           mov AL, [rdi]
- NextD : ROL AL, 4
+NextD : ROL AL, 4
          MOV BL, AL
          AND AL, 0FH
          CMP AL, 09H
- JBE down 
+         JBE down 
        Add AL, 07H
- down :Add AL, 30H
+down :Add AL, 30H
   mov [rsi], AL 
   INC rsi
   mov AL,BL
