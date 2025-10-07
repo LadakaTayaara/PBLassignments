@@ -1,0 +1,11 @@
+org 00H
+mov DPTR, #0010H
+mov R0, #40H
+mov R2, #06H
+Next_B:
+clr A
+movc A, @A+DPTR
+mov @R0, A
+inc dptr
+inc R0
+djnz R2, Next_B

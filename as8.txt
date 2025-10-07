@@ -1,0 +1,12 @@
+org 00H
+mov R0, #30H
+mov R1, #50H
+mov R2, #05H
+
+next:
+mov A, @R0
+mov @R1, A
+INC R0
+INC R1
+DJNZ R2, next
+END
