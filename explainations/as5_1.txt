@@ -1,0 +1,96 @@
+; Define a macro named 'operate' that takes 4 arguments.
+; This is a shortcut for the repetitive task of setting up registers for a system call.
+%macro operate 4
+    mov rax, %1       ; Set RAX to the system call number (1st argument).
+    mov rdi, %2       ; Set RDI to the 1st syscall argument (e.g., file descriptor).
+    mov rsi, %3       ; Set RSI to the 2nd syscall argument (e.g., buffer address).
+    mov rdx, %4       ; Set RDX to the 3rd syscall argument (e.g., byte count or mode).
+    syscall           ; Tell the kernel to execute the system call.
+%endmacro
+
+; Data section for initialized constants.
+section .data
+msg1 db "File copied successfully!",10 ; Define the success message, 10 is the ASCII newline character.
+msg1len equ $-msg1                    ; Calculate the length of the success message.
+
+msg2 db "Error!",10                    ; Define a generic error message.
+msg2len equ $-msg2                    ; Calculate the length of the error message.
+
+
+; BSS section for uninitialized data that will be filled at runtime.
+section .bss
+    fname1 resb 15    ; Reserve 15 bytes to store the source filename.
+    fd1 resq 1        ; Reserve 8 bytes (a quadword) to store the source file descriptor.
+    fname2 resb 15    ; Reserve 15 bytes to store the destination filename.
+    fd2 resq 1        ; Reserve 8 bytes to store the destination file descriptor.
+    buff resb 512     ; Reserve a 512-byte buffer to hold the file contents during the copy.
+    bufflen resq 1    ; Reserve 8 bytes to store the actual number of bytes read from the file.
+
+
+section .text
+global _start
+_start:
+    ; --- Argument Handling from the Stack ---
+    pop r8            ; Pop the first value from the stack: the argument count (argc).
+    cmp r8,3          ; Compare argc to 3 (program name, source file, destination file).
+    jne err           ; If argc is not 3, jump to the error routine.
+    pop r8            ; Pop the next value: the address of the program's name (argv[0]). We ignore this.
+    pop r8            ; Pop the next value: the address of the source filename string (argv[1]).
+
+    mov rsi,fname1    ; Point RSI to our local buffer `fname1` (destination for the copy).
+
+above:                ; This loop copies the source filename from argv[1] into our `fname1` buffer.
+    mov al,[r8]       ; Get one character from the source filename string pointed to by R8.
+    cmp al,00         ; Compare the character to the null terminator (end of string).
+    je next           ; If it's the end of the string, exit the loop.
+    mov [rsi],al      ; Copy the character to our local buffer `fname1`.
+    inc r8            ; Move to the next character in the source filename.
+    inc rsi           ; Move to the next position in our local buffer.
+    jmp above         ; Repeat the loop.
+
+next:
+    pop r8            ; Pop the final argument: the address of the destination filename string (argv[2]).
+    mov rsi,fname2    ; Point RSI to our local buffer `fname2`.
+
+above2:               ; This loop copies the destination filename from argv[2] into our `fname2` buffer.
+    mov al,[r8]       ; Get one character from the destination filename string.
+    cmp al,00         ; Check for the null terminator.
+    je next2          ; If it's the end, exit the loop.
+    mov [rsi],al      ; Copy the character to `fname2`.
+    inc r8            ; Move to the next character.
+    inc rsi           ; Move to the next position in our buffer.
+    jmp above2        ; Repeat the loop.
+
+
+next2:
+    ; --- File Operations ---
+    ; Open the source file. Syscall 2 = sys_open. 0 = O_RDONLY flag. 0777q is ignored for reading.
+    operate 2,fname1,0,0
+    mov [fd1],rax     ; The 'open' syscall returns the file descriptor in RAX. Save it in fd1.
+
+    ; Read from the source file. Syscall 0 = sys_read.
+    operate 0,[fd1],buff,512
+    mov [bufflen],rax ; 'read' returns the number of bytes actually read. Save this in bufflen.
+
+    ; Create the destination file. Syscall 85 = sys_creat. 0777q sets file permissions (read/write/execute for all).
+    operate 85,fname2,0777q,0
+    ; Open the newly created destination file for writing. Syscall 2 = sys_open. Flag 2 = O_WRONLY.
+    operate 2,fname2,2,0777q
+    mov [fd2],rax     ; Save the destination file's descriptor in fd2.
+
+    ; Write the buffer's contents to the destination file. Syscall 1 = sys_write.
+    operate 1,[fd2],buff,[bufflen]
+    operate 3,[fd2],0,0 ; Close the destination file. Syscall 3 = sys_close.
+    operate 3,[fd1],0,0 ; Close the source file.
+
+    ; --- Success and Exit ---
+    operate 1,1,msg1,msg1len ; Print the "success" message to the screen (stdout = 1).
+    jmp end           ; Jump to the final exit routine.
+
+err:
+    ; --- Error Handling and Exit ---
+    operate 1,1,msg2,msg2len ; Print the "Error!" message to the screen.
+    operate 60,1,0,0         ; Exit the program with an error code of 1. Syscall 60 = sys_exit.
+
+end:
+    operate 60,0,0,0         ; Exit the program with a success code of 0.

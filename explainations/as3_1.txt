@@ -1,0 +1,100 @@
+; Define a macro named 'rw' that takes 4 arguments.
+; This creates a reusable shortcut for making system calls.
+%macro rw 4
+    mov   rax, %1     ; Move the 1st argument (the syscall number) into the rax register.
+    mov   rdi, %2     ; Move the 2nd argument (e.g., file descriptor) into the rdi register.
+    mov   rsi, %3     ; Move the 3rd argument (e.g., buffer address) into the rsi register.
+    mov   rdx, %4     ; Move the 4th argument (e.g., byte count) into the rdx register.
+    syscall           ; Execute the system call by calling the kernel.
+%endmacro
+
+; BSS section for uninitialized data.
+section .bss
+    str1    resb 100  ; Reserve 100 bytes of memory for the first string.
+    str2    resb 100  ; Reserve 100 bytes of memory for the second string.
+
+; Data section for initialized constants.
+section .data
+    prompt1         db "Enter first string: ", 0    ; Define the first prompt message.
+    prompt1_len     equ $ - prompt1                 ; Calculate the length of the first prompt.
+
+    prompt2         db "Enter second string: ", 0   ; Define the second prompt message.
+    prompt2_len     equ $ - prompt2                 ; Calculate the length of the second prompt.
+
+    equal_msg       db "Strings are equal.", 10, 0  ; Define the 'equal' message. (10 is newline).
+    equal_msg_len   equ $ - equal_msg               ; Calculate its length.
+
+    not_equal_msg   db "Strings are NOT equal.", 10, 0 ; Define the 'not equal' message.
+    not_equal_msg_len equ $ - not_equal_msg         ; Calculate its length.
+
+; Text section for the actual code.
+section .text
+    global _start     ; Make the '_start' label the global entry point for the linker.
+
+_start:
+    ; Use the rw macro to print the first prompt.
+    ; syscall 1 = sys_write, file descriptor 1 = stdout.
+    rw 1, 1, prompt1, prompt1_len
+
+    ; Use the rw macro to read user input.
+    ; syscall 0 = sys_read, file descriptor 0 = stdin.
+    rw 0, 0, str1, 100
+    mov rsi, rax      ; The 'read' syscall returns the byte count in rax. Save this length in rsi.
+
+    ; --- Remove trailing newline from the first string ---
+    cmp rsi, 0        ; Check if any bytes were read.
+    je read_second_string ; If input was empty, jump to the next part.
+    mov rax, rsi      ; Copy the length into rax for calculation.
+    dec rax           ; Decrement to get the index of the last character.
+    mov al, [str1 + rax]; Load the last character into the al register.
+    cmp al, 10        ; Compare the character to ASCII 10 (newline).
+    jne read_second_string; If it's not a newline, jump to the next part.
+    mov byte [str1 + rax], 0 ; If it is a newline, overwrite it with a null terminator.
+    dec rsi           ; Decrement our stored length since we removed a character.
+
+read_second_string:
+    ; Use the rw macro to print the second prompt.
+    rw 1, 1, prompt2, prompt2_len
+
+    ; Use the rw macro to read the second string.
+    rw 0, 0, str2, 100
+    mov rdi, rax      ; Save the length of the second string in rdi.
+
+    ; --- Remove trailing newline from the second string ---
+    cmp rdi, 0        ; Check if any bytes were read.
+    je compare_strings; If input was empty, jump to comparison.
+    mov rax, rdi      ; Copy the length into rax for calculation.
+    dec rax           ; Decrement to get the index of the last character.
+    mov al, [str2 + rax]; Load the last character into the al register.
+    cmp al, 10        ; Compare the character to ASCII 10 (newline).
+    jne compare_strings; If it's not a newline, jump to comparison.
+    mov byte [str2 + rax], 0; If it is a newline, overwrite it.
+    dec rdi           ; Decrement the stored length.
+
+compare_strings:
+    ; --- The actual comparison logic ---
+    cmp rsi, rdi      ; First, compare the lengths of the two strings.
+    jne not_equal     ; If lengths are different, they can't be equal, so jump.
+
+    mov rcx, rsi      ; Load the length into rcx, which is the counter for repe cmpsb.
+    mov rsi, str1     ; Point rsi to the beginning of the first string.
+    mov rdi, str2     ; Point rdi to the beginning of the second string.
+    repe cmpsb        ; Compare bytes at [rsi] and [rdi], repeating while they are equal until rcx is 0.
+    jne not_equal     ; If the loop finished early (a mismatch), the Zero Flag is cleared. Jump.
+
+equal:
+    ; This code runs if the strings are equal.
+    ; Print the "equal" message using the rw macro.
+    rw 1, 1, equal_msg, equal_msg_len
+    jmp exit          ; Jump to the end of the program.
+
+not_equal:
+    ; This code runs if the strings are not equal.
+    ; Print the "not equal" message using the rw macro.
+    rw 1, 1, not_equal_msg, not_equal_msg_len
+
+exit:
+    ; This code terminates the program.
+    mov rax, 60       ; Put the syscall number for 'sys_exit' (60) into rax.
+    mov rdi, 0        ; Set the exit code to 0 (success).
+    syscall           ; Make the syscall to exit the program.

@@ -1,0 +1,117 @@
+; This section is for declaring uninitialized variables.
+; The memory is reserved but not assigned any specific value at compile time.
+section .bss
+    str1 resb 100   ; Reserve 100 bytes of memory for the first input string.
+    str2 resb 100   ; Reserve 100 bytes of memory for the second input string.
+
+; This section is for declaring initialized constants and data.
+section .data
+    prompt1 db "Enter first string: ", 0    ; Define the first prompt message, null-terminated.
+    prompt1_len equ $ - prompt1             ; Calculate the length of prompt1 automatically.
+
+    prompt2 db "Enter second string: ", 0   ; Define the second prompt message, null-terminated.
+    prompt2_len equ $ - prompt2             ; Calculate the length of prompt2.
+
+    equal_msg db "Strings are equal.", 10, 0 ; Define the message for when strings match. 10 is the ASCII code for a newline.
+    equal_msg_len equ $ - equal_msg         ; Calculate the length of the 'equal' message.
+
+    not_equal_msg db "Strings are NOT equal.", 10, 0 ; Define the message for when strings don't match.
+    not_equal_msg_len equ $ - not_equal_msg ; Calculate the length of the 'not equal' message.
+
+; This section contains the actual program logic.
+section .text
+    global _start   ; Make the '_start' label visible to the linker, marking it as the entry point.
+
+_start:
+    ; --- Print the first prompt ---
+    mov eax, 4          ; Use the 'sys_write' system call (EAX = 4).
+    mov ebx, 1          ; Set the file descriptor to 1 (stdout - the screen).
+    mov ecx, prompt1    ; Load the address of the message to be printed into ECX.
+    mov edx, prompt1_len; Load the length of the message into EDX.
+    int 0x80            ; Call the kernel to execute the system call.
+
+    ; --- Read the first string from the user ---
+    mov eax, 3          ; Use the 'sys_read' system call (EAX = 3).
+    mov ebx, 0          ; Set the file descriptor to 0 (stdin - the keyboard).
+    mov ecx, str1       ; Load the address of the buffer to store the input.
+    mov edx, 100        ; Set the maximum number of bytes to read.
+    int 0x80            ; Call the kernel. The number of bytes read is returned in EAX.
+    mov esi, eax        ; Save the number of bytes read (the string length) into ESI.
+
+    ; --- Remove the trailing newline character from the first string ---
+    cmp esi, 0          ; Check if any bytes were actually read.
+    je read_second_string ; If not, just skip to the next part.
+    mov eax, esi        ; Copy the length back to EAX for calculation.
+    dec eax             ; Decrement to get the index of the last character (the newline).
+    mov al, [str1 + eax]; Load that last character into the AL register.
+    cmp al, 10          ; Compare it with the ASCII code for newline (10).
+    jne read_second_string; If it's not a newline, don't do anything.
+    mov byte [str1 + eax], 0 ; If it is a newline, replace it with a null terminator (0).
+    dec esi             ; Decrement the stored length (ESI) because we removed a character.
+
+read_second_string:
+    ; --- Print the second prompt ---
+    mov eax, 4          ; 'sys_write' system call.
+    mov ebx, 1          ; File descriptor for stdout.
+    mov ecx, prompt2    ; Address of the second prompt message.
+    mov edx, prompt2_len; Length of the second prompt message.
+    int 0x80            ; Call the kernel.
+
+    ; --- Read the second string from the user ---
+    mov eax, 3          ; 'sys_read' system call.
+    mov ebx, 0          ; File descriptor for stdin.
+    mov ecx, str2       ; Address of the buffer for the second string.
+    mov edx, 100        ; Maximum bytes to read.
+    int 0x80            ; Call the kernel. Bytes read are returned in EAX.
+    mov edi, eax        ; Save the length of the second string in EDI.
+
+    ; --- Remove the trailing newline character from the second string ---
+    cmp edi, 0          ; Check if any bytes were read.
+    je compare_strings  ; If not, skip to comparison.
+    mov eax, edi        ; Copy the length back to EAX.
+    dec eax             ; Decrement to get the index of the last character.
+    mov al, [str2 + eax]; Load the last character into AL.
+    cmp al, 10          ; Compare with newline (10).
+    jne compare_strings ; If it's not a newline, do nothing.
+    mov byte [str2 + eax], 0 ; If it is a newline, replace it with a null terminator.
+    dec edi             ; Decrement the stored length (EDI).
+
+compare_strings:
+    ; --- Compare the two strings ---
+    cmp esi, edi        ; First, compare the lengths of the two strings (from ESI and EDI).
+    jne not_equal       ; If the lengths are different, the strings can't be equal. Jump.
+
+    ; If lengths are the same, compare the content character by character.
+    mov ecx, esi        ; Load the length of the strings into ECX, which acts as a counter.
+    mov esi, str1       ; Point ESI to the beginning of the first string (Source Index).
+    mov edi, str2       ; Point EDI to the beginning of the second string (Destination Index).
+
+    repe cmpsb          ; **REPeat while Equal, CoMPare String Bytes.**
+                        ; This instruction compares the byte at [ESI] with the byte at [EDI].
+                        ; If they are equal, it decrements ECX and continues.
+                        ; If they are not equal, it stops.
+
+    jne not_equal       ; After repe cmpsb, if the Zero Flag is not set, it means a mismatch was found. Jump.
+
+equal:
+    ; --- This code runs if the strings are equal ---
+    mov eax, 4          ; 'sys_write' system call.
+    mov ebx, 1          ; File descriptor stdout.
+    mov ecx, equal_msg  ; Address of the "equal" message.
+    mov edx, equal_msg_len; Length of the message.
+    int 0x80            ; Call the kernel to print the message.
+    jmp exit            ; Jump to the end of the program.
+
+not_equal:
+    ; --- This code runs if the strings are NOT equal ---
+    mov eax, 4          ; 'sys_write' system call.
+    mov ebx, 1          ; File descriptor stdout.
+    mov ecx, not_equal_msg ; Address of the "not equal" message.
+    mov edx, not_equal_msg_len; Length of the message.
+    int 0x80            ; Call the kernel to print the message.
+
+exit:
+    ; --- Terminate the program ---
+    mov eax, 1          ; Use the 'sys_exit' system call (EAX = 1).
+    mov ebx, 0          ; Provide an exit code of 0 (success).
+    int 0x80            ; Call the kernel to terminate.

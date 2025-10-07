@@ -1,0 +1,66 @@
+; Define a reusable macro named 'operate' that takes 4 arguments.
+; This simplifies the process of making system calls.
+%macro operate 4
+    mov rax, %1       ; Set RAX to the system call number.
+    mov rdi, %2       ; Set RDI to the 1st syscall argument.
+    mov rsi, %3       ; Set RSI to the 2nd syscall argument.
+    mov rdx, %4       ; Set RDX to the 3rd syscall argument.
+    syscall           ; Execute the system call.
+%endmacro
+
+; Data section for initialized constants.
+section .data
+msg db "File deleted successfully!",10 ; Define the success message (10 is newline).
+msglen equ $-msg                    ; Calculate the length of the success message.
+
+error_msg db "something went wrong!",10 ; Define the error message.
+error_msg_len equ $-error_msg       ; Calculate the length of the error message.
+
+; BSS section for uninitialized variables.
+section .bss
+    fname resb 15     ; Reserve 15 bytes of memory to store the filename.
+    fd1 resq 1        ; Reserve 8 bytes for a file descriptor (unused in this final code).
+
+
+; Text section containing the executable code.
+section .text
+global _start
+_start:
+    ; --- Command-Line Argument Handling ---
+    pop r8            ; Pop the argument count (argc) from the stack into r8.
+    cmp r8,2          ; Compare argc to 2 (expecting program name + one filename).
+    jne err           ; If argc is not 2, jump to the error handling routine.
+    pop r8            ; Pop the program name (argv[0]) from the stack and discard it.
+    pop r8            ; Pop the address of the filename string (argv[1]) into r8.
+
+    mov rsi,fname     ; Point rsi to our local `fname` buffer (the destination).
+
+above:                ; This loop copies the filename from the command-line argument into `fname`.
+    mov al,[r8]       ; Get one character from the filename string pointed to by r8.
+    cmp al,00         ; Compare the character to the null terminator to check for the end of the string.
+    je next           ; If it's the end of the string, exit the loop.
+    mov [rsi],al      ; Copy the character to our local `fname` buffer.
+    inc r8            ; Move to the next character in the source string.
+    inc rsi           ; Move to the next byte in the destination buffer.
+    jmp above         ; Repeat the loop.
+
+next:
+    ; --- File Operations ---
+    ; Note: The following two lines open the file but the file descriptor is never used.
+    ; This is redundant but harmless. The program would work the same without them.
+    operate 2,fname,0,0 ; Syscall 2 (sys_open) to open the file.
+    mov [fd1],rax     ; Save the returned file descriptor in the fd1 variable.
+
+    ; This is the main operation: deleting the file.
+    operate 87,fname,0,0 ; Syscall 87 is 'unlink', which deletes the file specified by `fname`.
+    operate 1,1,msg,msglen ; Print the "success" message to the screen (stdout).
+    jmp end           ; Jump to the final exit routine.
+
+err:
+    ; --- Error Handling ---
+    operate 1,1,error_msg,error_msg_len ; Print the error message to the screen.
+    operate 60,1,0,0  ; Syscall 60 (sys_exit) to terminate the program with an error code of 1.
+
+end:
+    ; --- Normal Exit ---
+    operate 60,0,0,0  ; Syscall 60 (sys_exit) to terminate the program with a success code of 0.
